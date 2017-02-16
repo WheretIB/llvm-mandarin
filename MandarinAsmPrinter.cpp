@@ -28,8 +28,16 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Target/Mangler.h"
+#include "llvm/Target/TargetFrameLowering.h"
+#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
 
+//#define GET_REGINFO_ENUM
+//#include "MandarinGenRegisterInfo.inc"
 
 namespace llvm
 {
@@ -63,6 +71,14 @@ namespace {
                          const char *Modifier = 0);
 	void printBasicBlock(const MachineInstr *MI, int opNum, raw_ostream &OS);
     void printCCOperand(const MachineInstr *MI, int opNum, raw_ostream &OS);
+	
+	template<int N>
+	void printQuadRegOff(const MachineInstr *MI, int opNum, raw_ostream &OS)
+	{
+		printQuadRegOffN(MI, opNum, OS, N);
+	}
+
+	void printQuadRegOffN(const MachineInstr *MI, int opNum, raw_ostream &OS, int N);
 
 	virtual void EmitConstantPool();
     virtual void EmitInstruction(const MachineInstr *MI) {
@@ -95,7 +111,11 @@ void MandarinAsmPrinter::EmitConstantPool()
 	const std::vector<MachineConstantPoolEntry> &CP = MCP->getConstants();
 	if (CP.empty()) return;
 
-	OutStreamer.EmitRawText(".DATA");
+	const MCSection *S = TM.getTargetLowering()->getObjFileLowering().getDataSection();
+
+	OutStreamer.SwitchSection(S);
+
+	//OutStreamer.EmitRawText(".DATA");
 
 	unsigned Offset = 0;
     for (unsigned i = 0, e = CP.size(); i != e; ++i)
@@ -155,16 +175,16 @@ void MandarinAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
 		O << "hi8(";
 		break;
 	case MDII::MO_LO32:
-		O << "hi32(";
+		O << "lo32(";
 		break;
 	case MDII::MO_LO24:
-		O << "hi24(";
+		O << "lo24(";
 		break;
 	case MDII::MO_LO16:
-		O << "hi16(";
+		O << "lo16(";
 		break;
 	case MDII::MO_LO8:
-		O << "hi8(";
+		O << "lo8(";
 		break;
 	}
 
@@ -238,6 +258,45 @@ void MandarinAsmPrinter::printCCOperand(const MachineInstr *MI, int opNum,
 		O << "le";
 		break;
 	}
+}
+
+void MandarinAsmPrinter::printQuadRegOffN(const MachineInstr *MI, int opNum, raw_ostream &OS, int N)
+{
+	const llvm::TargetRegisterInfo *regInfo = TM.getRegisterInfo();
+
+	const MachineOperand &MO = MI->getOperand(opNum);
+
+	unsigned reg = MO.getReg();
+
+	if(MD::QuadRegsRegClass.contains(reg))
+	{
+		switch(N)
+		{
+		case 0:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r4sub0))).lower();
+			break;
+		case 1:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r4sub1))).lower();
+			break;
+		case 2:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r4sub2))).lower();
+			break;
+		case 3:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r4sub3))).lower();
+			break;
+		}
+	}else if(MD::DoubleRegsRegClass.contains(reg)){
+		switch(N)
+		{
+		case 0:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r2sub0))).lower();
+			break;
+		case 1:
+			OS << StringRef(getRegisterName(regInfo->getSubReg(reg, MD::r2sub1))).lower();
+			break;
+		}
+	}
+	OS << "/*" << StringRef(getRegisterName(reg)).lower() << "_" << N << "*/";
 }
 
 /// PrintAsmOperand - Print out an operand for an inline asm expression.

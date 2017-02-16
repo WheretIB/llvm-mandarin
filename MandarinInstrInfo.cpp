@@ -233,7 +233,25 @@ void MandarinInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
 	if(MD::GenericRegsRegClass.contains(DestReg, SrcReg))
 	{
 		BuildMI(MBB, I, DL, get(MD::MOVrr), DestReg).addReg(SrcReg, getKillRegState(KillSrc));
-	}else{
+	}
+	else if(MD::DoubleRegsRegClass.contains(DestReg, SrcReg) )
+	{
+		BuildMI(MBB, I, DL, get(MD::MOV2rr), DestReg).addReg(SrcReg, getKillRegState(KillSrc));
+	}
+	else if(MD::DoubleRegsRegClass.contains(DestReg) && (SrcReg == MD::R0 || SrcReg == MD::R2))
+	{
+		printf("Registers are already there\n");
+	}
+	else if(MD::QuadRegsRegClass.contains(DestReg, SrcReg))
+	{
+		BuildMI(MBB, I, DL, get(MD::MOV4rr), DestReg).addReg(SrcReg, getKillRegState(KillSrc));
+	}
+	else if(MD::QuadRegsRegClass.contains(DestReg) && SrcReg == MD::R0)
+	{
+		printf("Registers are already there\n");
+	}
+	else
+	{
 		llvm_unreachable("Impossible reg-to-reg copy");
 	}
 }

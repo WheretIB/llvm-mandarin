@@ -220,16 +220,37 @@ LowerFormalArguments(SDValue Chain,
     if (VA.isRegLoc()) {
       // Arguments passed in registers
       EVT RegVT = VA.getLocVT();
+
+	  unsigned VReg;
+	  SDValue ArgValue;
+
       switch (RegVT.getSimpleVT().SimpleTy) {
       default:
           llvm_unreachable(0);
       case MVT::i32:
 	  case MVT::f32:
-        unsigned VReg = RegInfo.createVirtualRegister(&MD::GenericRegsRegClass);
+        VReg = RegInfo.createVirtualRegister(&MD::GenericRegsRegClass);
         RegInfo.addLiveIn(VA.getLocReg(), VReg);
-        SDValue ArgValue = DAG.getCopyFromReg(Chain, DL, VReg, RegVT);
+        ArgValue = DAG.getCopyFromReg(Chain, DL, VReg, RegVT);
 
         InVals.push_back(ArgValue);
+		break;
+	  case MVT::v2i32:
+	  case MVT::v2f32:
+        VReg = RegInfo.createVirtualRegister(&MD::DoubleRegsRegClass);
+        RegInfo.addLiveIn(VA.getLocReg(), VReg);
+        ArgValue = DAG.getCopyFromReg(Chain, DL, VReg, RegVT);
+
+        InVals.push_back(ArgValue);
+		break;
+	  case MVT::v4i32:
+	  case MVT::v4f32:
+        VReg = RegInfo.createVirtualRegister(&MD::QuadRegsRegClass);
+        RegInfo.addLiveIn(VA.getLocReg(), VReg);
+        ArgValue = DAG.getCopyFromReg(Chain, DL, VReg, RegVT);
+
+        InVals.push_back(ArgValue);
+		break;
       }
     } else {
       // Sanity check
@@ -504,12 +525,18 @@ MandarinTargetLowering::MandarinTargetLowering(TargetMachine &TM)
   // Set up the register classes.
   addRegisterClass(MVT::i32, &MD::GenericRegsRegClass);
   addRegisterClass(MVT::f32, &MD::GenericRegsRegClass);
+  addRegisterClass(MVT::v2i32, &MD::DoubleRegsRegClass);
+  addRegisterClass(MVT::v2f32, &MD::DoubleRegsRegClass);
+  addRegisterClass(MVT::v4i32, &MD::QuadRegsRegClass);
+  addRegisterClass(MVT::v4f32, &MD::QuadRegsRegClass);
 
   setLoadExtAction(ISD::EXTLOAD, MVT::f32, Expand);
   setLoadExtAction(ISD::EXTLOAD, MVT::f64, Expand);
 
-  // Mandarin doesn't have i1 sign extending load
+  // Mandarin doesn't have i1 loads
+  setLoadExtAction(ISD::EXTLOAD,  MVT::i1,  Promote);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i1, Promote);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i1,  Promote);
 
   // Turn FP truncstore into trunc + store.
   setTruncStoreAction(MVT::f64, MVT::f32, Expand);
@@ -523,6 +550,7 @@ MandarinTargetLowering::MandarinTargetLowering(TargetMachine &TM)
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8 , Expand);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1 , Expand);
 
+  setOperationAction(ISD::UDIV, MVT::i32, Expand);
   setOperationAction(ISD::UREM, MVT::i32, Expand);
   setOperationAction(ISD::SDIVREM, MVT::i32, Expand);
   setOperationAction(ISD::UDIVREM, MVT::i32, Expand);
@@ -601,8 +629,23 @@ MandarinTargetLowering::MandarinTargetLowering(TargetMachine &TM)
   setOperationAction(ISD::STACKRESTORE      , MVT::Other, Expand);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32  , Custom);
 
-  setExceptionPointerRegister(MD::R30);
-  setExceptionSelectorRegister(MD::R29);
+  setOperationAction(ISD::BUILD_VECTOR      , MVT::v2i32, Expand);
+  setOperationAction(ISD::BUILD_VECTOR      , MVT::v4i32, Expand);
+  setOperationAction(ISD::BUILD_VECTOR      , MVT::v2f32, Expand);
+  setOperationAction(ISD::BUILD_VECTOR      , MVT::v4f32, Expand);
+  setOperationAction(ISD::VECTOR_SHUFFLE    , MVT::v2i32, Expand);
+  setOperationAction(ISD::VECTOR_SHUFFLE    , MVT::v4i32, Expand);
+  setOperationAction(ISD::VECTOR_SHUFFLE    , MVT::v2f32, Expand);
+  setOperationAction(ISD::VECTOR_SHUFFLE    , MVT::v4f32, Expand);
+  setOperationAction(ISD::INSERT_VECTOR_ELT , MVT::v2i32, Expand);
+  setOperationAction(ISD::INSERT_VECTOR_ELT , MVT::v4i32, Expand);
+  setOperationAction(ISD::INSERT_VECTOR_ELT , MVT::v2f32, Expand);
+  setOperationAction(ISD::INSERT_VECTOR_ELT , MVT::v4f32, Expand);
+
+  setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2i32, Custom);
+  setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v4i32, Custom);
+  setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2f32, Custom);
+  setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v4f32, Custom);
 
   setMinFunctionAlignment(2);
 
@@ -709,10 +752,13 @@ SDValue MandarinTargetLowering::LowerAddress(SDValue Op, SelectionDAG &DAG) cons
     if (getTargetMachine().getRelocationModel() != Reloc::PIC_)
 	{
 		// %hi/%lo relocation
-		SDValue HiPart = DAG.getNode(MDISD::HIGH, DL, VT, withTargetFlags(Op, MDII::MO_HI16, DAG));
+		// This is a generic model, but we will use a simplified one
+		/*SDValue HiPart = DAG.getNode(MDISD::HIGH, DL, VT, withTargetFlags(Op, MDII::MO_HI16, DAG));
 		SDValue LoPart = DAG.getNode(MDISD::LOW, DL, VT, withTargetFlags(Op, MDII::MO_LO16, DAG));
-		return DAG.getNode(ISD::ADD, DL, VT, HiPart, LoPart);
+		return DAG.getNode(ISD::ADD, DL, VT, HiPart, LoPart);*/
 
+		// 64kb
+		return DAG.getNode(MDISD::LOW, DL, VT, withTargetFlags(Op, MDII::MO_LO16, DAG));
 	}
   
 	llvm_unreachable("Unsupported absolute code model");
@@ -803,6 +849,23 @@ SDValue MandarinTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) co
 						DAG.getConstant(MDCC, MVT::i32), CompareFlag);
 }
 
+SDValue MandarinTargetLowering::LowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const
+{
+	SDValue Value = Op.getOperand(0);
+	SDValue Lane = Op.getOperand(1);
+	if (!isa<ConstantSDNode>(Lane))
+		return SDValue();
+
+	Op.dump();
+
+	Op.getOperand(0).dump();
+	Op.getOperand(1).dump();
+
+	//return DAG.getNode(MDISD::;
+
+	return Op;
+}
+
 SDValue MandarinTargetLowering::
 LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 
@@ -815,6 +878,8 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 	  return LowerBR_CC(Op, DAG);
   case ISD::SELECT_CC:
 	  return LowerSELECT_CC(Op, DAG);
+  case ISD::EXTRACT_VECTOR_ELT:
+	  return LowerEXTRACT_VECTOR_ELT(Op, DAG);
   case ISD::GlobalAddress:
   case ISD::ConstantPool:
 	  return LowerAddress(Op, DAG);
@@ -825,9 +890,7 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::VASTART:            return LowerVASTART(Op, DAG, *this);
   case ISD::VAARG:              return LowerVAARG(Op, DAG);
   case ISD::DYNAMIC_STACKALLOC: return LowerDYNAMIC_STACKALLOC(Op, DAG,
-                                                               Subtarget);
-
-  case ISD::FNEG:               return LowerFNEG(Op, DAG, *this, is64Bit);*/
+                                                               Subtarget);*/
   }
 }
 

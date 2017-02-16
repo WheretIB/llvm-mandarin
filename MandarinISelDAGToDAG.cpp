@@ -63,23 +63,37 @@ SDNode *MandarinDAGToDAGISel::Select(SDNode *N) {
     return NULL;   // Already selected.
   }
 
+  switch (N->getOpcode()) {
+  default: break;
+  case ISD::FrameIndex:
+	  if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(N))
+	  {
+		  return CurDAG->getTargetFrameIndex(FIN->getIndex(),
+			  getTargetLowering()->getPointerTy()).getNode();
+	  }
+  }
+
   return SelectCode(N);
 }
 
 bool MandarinDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &R1)
 {
-  if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
-    R1 = CurDAG->getTargetFrameIndex(FIN->getIndex(),
-                                       getTargetLowering()->getPointerTy());
-    return true;
-  }
-  if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
-      Addr.getOpcode() == ISD::TargetGlobalAddress ||
-      Addr.getOpcode() == ISD::TargetGlobalTLSAddress)
-    return false;  // direct calls.
+	if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr))
+	{
+		R1 = CurDAG->getTargetFrameIndex(FIN->getIndex(),
+		getTargetLowering()->getPointerTy());
+		return true;
+	}
 
-  R1 = Addr;
-  return true;
+	if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
+		Addr.getOpcode() == ISD::TargetGlobalAddress ||
+		Addr.getOpcode() == ISD::TargetGlobalTLSAddress)
+	{
+		return false;  // direct calls.
+	}
+
+	R1 = Addr;
+	return true;
 }
 
 /// createMandarinISelDag - This pass converts a legalized DAG into a

@@ -20,14 +20,16 @@ include "MandarinInstrFormats.td"
 // Immediate contraints.
 //===----------------------------------------------------------------------===//
 
-def simm14  : PatLeaf<(imm), [{ return isInt<14>(N->getSExtValue()); }]>;
-def uimm14  : PatLeaf<(imm), [{ return isUInt<14>(N->getZExtValue()); }]>;
+def i32imm32  : ImmLeaf<i32, [{ return true; }]>;
 
-def simm19  : PatLeaf<(imm), [{ return isInt<19>(N->getSExtValue()); }]>;
-def uimm19  : PatLeaf<(imm), [{ return isUInt<19>(N->getZExtValue()); }]>;
+def simm14  : PatLeaf<(i32imm32), [{ return isInt<14>(N->getSExtValue()); }]>;
+def uimm14  : PatLeaf<(i32imm32), [{ return isUInt<14>(N->getZExtValue()); }]>;
 
-def simm24  : PatLeaf<(imm), [{ return isInt<24>(N->getSExtValue()); }]>;
-def uimm24  : PatLeaf<(imm), [{ return isUInt<24>(N->getZExtValue()); }]>;
+def simm19  : PatLeaf<(i32imm32), [{ return isInt<19>(N->getSExtValue()); }]>;
+def uimm19  : PatLeaf<(i32imm32), [{ return isUInt<19>(N->getZExtValue()); }]>;
+
+def simm24  : PatLeaf<(i32imm32), [{ return isInt<24>(N->getSExtValue()); }]>;
+def uimm24  : PatLeaf<(i32imm32), [{ return isUInt<24>(N->getZExtValue()); }]>;
 
 def LO19 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant((unsigned)N->getZExtValue() & 524287,
@@ -126,157 +128,95 @@ let Uses = [CC_FLAG], usesCustomInserter = 1 in {
   def SELECT_CC_Int
    : Pseudo<(outs GenericRegs:$dst), (ins GenericRegs:$T, GenericRegs:$F, i32imm:$Cond),
             "// SELECT_CC_Int PSEUDO!",
-            [(set i32:$dst, (MDselectcc i32:$T, i32:$F, imm:$Cond))]>;
+            [(set i32:$dst, (MDselectcc i32:$T, i32:$F, i32imm32:$Cond))]>;
   def SELECT_CC_Float
    : Pseudo<(outs GenericRegs:$dst), (ins GenericRegs:$T, GenericRegs:$F, i32imm:$Cond),
             "; SELECT_CC_Float PSEUDO!",
-            [(set f32:$dst, (MDselectcc f32:$T, f32:$F, imm:$Cond))]>;
+            [(set f32:$dst, (MDselectcc f32:$T, f32:$F, i32imm32:$Cond))]>;
 
 }
+
+//===----------------------------------------------------------------------===//
+// Instruction Class Templates
+//===----------------------------------------------------------------------===//
+
+// Inst32MD3Int multiclass - define 3-argument operations with 1/2/4 regs
+multiclass Inst32MD3Int<bits<7> operationVal, string OpcStr, SDNode OpNode> {
+  def rr  : Inst32MD3R<operationVal,
+                 (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
+                 !strconcat(OpcStr, " $dst, $src1, $src2"),
+                 [(set i32:$dst, (OpNode i32:$src1, i32:$src2))]>;
+
+  def 2rr  : Inst32MD3R<operationVal,
+                 (outs DoubleRegs:$dst), (ins DoubleRegs:$src1, DoubleRegs:$src2),
+                 !strconcat(OpcStr, "[2] $dst, $src1, $src2"),
+                 [(set v2i32:$dst, (OpNode v2i32:$src1, v2i32:$src2))]>;
+
+  def 4rr  : Inst32MD3R<operationVal,
+                 (outs QuadRegs:$dst), (ins QuadRegs:$src1, QuadRegs:$src2),
+                 !strconcat(OpcStr, "[4] $dst, $src1, $src2"),
+                 [(set v4i32:$dst, (OpNode v4i32:$src1, v4i32:$src2))]>;
+}
+
+// Inst32MD3IntU multiclass - define 3-argument operations with 1/2/4 regs and an unsigned immediate
+multiclass Inst32MD3IntU<bits<7> operationVal, string OpcStr, SDNode OpNode>
+    : Inst32MD3Int<operationVal, OpcStr, OpNode>
+{
+  def ri  : Inst32MD3I<operationVal,
+                 (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
+                 !strconcat(OpcStr, " $dst, $src1, $src2"),
+                 [(set i32:$dst, (OpNode i32:$src1, uimm14:$src2))]>;
+}
+
+// Inst32MD3IntS multiclass - define 3-argument operations with 1/2/4 regs and a signed immediate
+multiclass Inst32MD3IntS<bits<7> operationVal, string OpcStr, SDNode OpNode>
+    : Inst32MD3Int<operationVal, OpcStr, OpNode>
+{
+  def ri  : Inst32MD3I<operationVal,
+                 (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
+                 !strconcat(OpcStr, " $dst, $src1, $src2"),
+                 [(set i32:$dst, (OpNode i32:$src1, simm14:$src2))]>;
+}
+
+// Inst32MD3Float multiclass - define 3-argument operations with 1/2/4 regs
+multiclass Inst32MD3Float<bits<7> operationVal, string OpcStr, SDNode OpNode> {
+  def rr  : Inst32MD3R<operationVal,
+                 (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
+                 !strconcat(OpcStr, " $dst, $src1, $src2"),
+                 [(set f32:$dst, (OpNode f32:$src1, f32:$src2))]>;
+
+  def 2rr  : Inst32MD3R<operationVal,
+                 (outs DoubleRegs:$dst), (ins DoubleRegs:$src1, DoubleRegs:$src2),
+                 !strconcat(OpcStr, "[2] $dst, $src1, $src2"),
+                 [(set v2f32:$dst, (OpNode v2f32:$src1, v2f32:$src2))]>;
+
+  def 4rr  : Inst32MD3R<operationVal,
+                 (outs QuadRegs:$dst), (ins QuadRegs:$src1, QuadRegs:$src2),
+                 !strconcat(OpcStr, "[4] $dst, $src1, $src2"),
+                 [(set v4f32:$dst, (OpNode v4f32:$src1, v4f32:$src2))]>;
+}
+
 
 //===----------------------------------------------------------------------===//
 // Instructions.
 //===----------------------------------------------------------------------===//
 
-def ADDrr : Inst32MD3R<0,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "add $dst, $src1, $src2",
-                  [(set i32:$dst, (add i32:$src1, i32:$src2))]>;
+defm ADD    : Inst32MD3IntU<0, "add", add>;
+defm SUB    : Inst32MD3IntU<1, "sub", sub>;
+defm MUL    : Inst32MD3IntU<2, "mul", mul>;
+defm DIV    : Inst32MD3IntS<3, "div", sdiv>; // signed
+defm MOD    : Inst32MD3IntS<4, "mod", srem>; // signed
 
-def ADDri : Inst32MD3I<0,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "add $dst, $src1, $src2",
-                  [(set i32:$dst, (add i32:$src1, uimm14:$src2))]>;
+defm FADD    : Inst32MD3Float<5, "fadd", fadd>;
+defm FSUB    : Inst32MD3Float<6, "fsub", fsub>;
+defm FMUL    : Inst32MD3Float<7, "fmul", fmul>;
+defm FDIV    : Inst32MD3Float<8, "fdiv", fdiv>;
 
-def SUBrr : Inst32MD3R<1,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "sub $dst, $src1, $src2",
-                  [(set i32:$dst, (sub i32:$src1, i32:$src2))]>;
-
-def SUBri : Inst32MD3I<1,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "sub $dst, $src1, $src2",
-                  [(set i32:$dst, (sub i32:$src1, uimm14:$src2))]>;
-
-def MULrr : Inst32MD3R<2,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "mul $dst, $src1, $src2",
-                  [(set i32:$dst, (mul i32:$src1, i32:$src2))]>;
-
-def MULri : Inst32MD3I<2,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "mul $dst, $src1, $src2",
-                  [(set i32:$dst, (mul i32:$src1, uimm14:$src2))]>;
-
-def DIVrr : Inst32MD3R<3,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "div $dst, $src1, $src2",
-                  [(set i32:$dst, (sdiv i32:$src1, i32:$src2))]>;
-
-def DIVri : Inst32MD3I<3,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "div $dst, $src1, $src2",
-                  [(set i32:$dst, (sdiv i32:$src1, simm14:$src2))]>;
-
-def MODrr : Inst32MD3R<4,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "mod $dst, $src1, $src2",
-                  [(set i32:$dst, (srem i32:$src1, i32:$src2))]>;
-
-def MODri : Inst32MD3I<4,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "mod $dst, $src1, $src2",
-                  [(set i32:$dst, (srem i32:$src1, simm14:$src2))]>;
-
-def FADDrr : Inst32MD3R<5,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "fadd $dst, $src1, $src2",
-                  [(set f32:$dst, (fadd f32:$src1, f32:$src2))]>;
-
-/*def FADDri : Inst32MD3I<5,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "fadd $dst, $src1, $src2",
-                  [(set f32:$dst, (fadd f32:$src1, uimm14:$src2))]>;*/
-
-def FSUBrr : Inst32MD3R<6,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "fsub $dst, $src1, $src2",
-                  [(set f32:$dst, (fsub f32:$src1, f32:$src2))]>;
-
-/*def FSUBri : Inst32MD3I<6,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "fsub $dst, $src1, $src2",
-                  [(set f32:$dst, (fsub f32:$src1, uimm14:$src2))]>;*/
-
-def FMULrr : Inst32MD3R<7,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "fmul $dst, $src1, $src2",
-                  [(set f32:$dst, (fmul f32:$src1, f32:$src2))]>;
-
-/*def FMULri : Inst32MD3I<7,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "fmul $dst, $src1, $src2",
-                  [(set f32:$dst, (fmul f32:$src1, uimm14:$src2))]>;*/
-
-def FDIVrr : Inst32MD3R<8,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "fdiv $dst, $src1, $src2",
-                  [(set f32:$dst, (fdiv f32:$src1, f32:$src2))]>;
-
-/*def FDIVri : Inst32MD3I<8,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "fdiv $dst, $src1, $src2",
-                  [(set f32:$dst, (fdiv f32:$src1, uimm14:$src2))]>;*/
-
-def SHLrr : Inst32MD3R<9,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "shl $dst, $src1, $src2",
-                  [(set i32:$dst, (shl i32:$src1, i32:$src2))]>;
-
-def SHLri : Inst32MD3I<9,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "shl $dst, $src1, $src2",
-                  [(set i32:$dst, (shl i32:$src1, uimm14:$src2))]>;
-
-def SHRrr : Inst32MD3R<10,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "shr $dst, $src1, $src2",
-                  [(set i32:$dst, (srl i32:$src1, i32:$src2))]>;
-
-def SHRri : Inst32MD3I<10,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "shr $dst, $src1, $src2",
-                  [(set i32:$dst, (srl i32:$src1, uimm14:$src2))]>;
-
-def ANDrr : Inst32MD3R<11,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "and $dst, $src1, $src2",
-                  [(set i32:$dst, (and i32:$src1, i32:$src2))]>;
-
-def ANDri : Inst32MD3I<11,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "and $dst, $src1, $src2",
-                  [(set i32:$dst, (and i32:$src1, uimm14:$src2))]>;
-
-def ORrr : Inst32MD3R<12,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "or $dst, $src1, $src2",
-                  [(set i32:$dst, (or i32:$src1, i32:$src2))]>;
-
-def ORri : Inst32MD3I<12,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "or $dst, $src1, $src2",
-                  [(set i32:$dst, (or i32:$src1, uimm14:$src2))]>;
-
-def XORrr : Inst32MD3R<13,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, GenericRegs:$src2),
-                  "xor $dst, $src1, $src2",
-                  [(set i32:$dst, (xor i32:$src1, i32:$src2))]>;
-
-def XORri : Inst32MD3I<13,
-                  (outs GenericRegs:$dst), (ins GenericRegs:$src1, i32imm:$src2),
-                  "xor $dst, $src1, $src2",
-                  [(set i32:$dst, (xor i32:$src1, uimm14:$src2))]>;
+defm SHL    : Inst32MD3IntU<9, "shl", shl>;
+defm SHR    : Inst32MD3IntU<10, "shr", srl>;
+defm AND    : Inst32MD3IntU<11, "and", and>;
+defm OR     : Inst32MD3IntU<12, "or", or>;
+defm XOR    : Inst32MD3IntU<13, "xor", xor>;
 
 // Unsigned compare - custom code logic
 let Defs = [CC_FLAG] in {
@@ -314,6 +254,11 @@ let Defs = [CC_FLAG] in {
                       [(MDfcmp f32:$src1, simm19:$src2)]>;
 }
 
+def NEGrr : Inst32MD2R<20,
+                  (outs GenericRegs:$dst), (ins GenericRegs:$src),
+                  "neg $dst, $src",
+                  [(set i32:$dst, (ineg i32:$src))]>;
+
 def FTOIrr : Inst32MD2R<18,
                   (outs GenericRegs:$dst), (ins GenericRegs:$src),
                   "ftoi $dst, $src",
@@ -334,7 +279,10 @@ def ITOFri : Inst32MD2R<19,
                   "ftoi $dst, $src",
                   [(set f32:$dst, (sint_to_fp simm19:$src))]>;
 
-// TODO: call
+def NOTrr : Inst32MD2R<20,
+                  (outs GenericRegs:$dst), (ins GenericRegs:$src),
+                  "not $dst, $src",
+                  [(set i32:$dst, (not i32:$src))]>;
 
 let isBranch = 1, isTerminator = 1 in {
   
@@ -382,20 +330,60 @@ def LOADrr : Inst32MD2R<29,
                   "load $dst, $addr",
                   [(set i32:$dst, (load addr:$addr))]>;
 
-def LOADri : Inst32MD2R<29,
+def LOADri : Inst32MD2I<29,
                   (outs GenericRegs:$dst), (ins i32imm:$addr),
                   "load $dst, $addr",
                   [(set i32:$dst, (load addr:$addr))]>;
+
+def LOAD2rr : Inst32MD2R<29,
+                  (outs DoubleRegs:$dst), (ins GenericRegs:$addr),
+                  "load[2] $dst, $addr",
+                  [(set v2i32:$dst, (load addr:$addr))]>;
+
+def LOAD2ri : Inst32MD2I<29,
+                  (outs DoubleRegs:$dst), (ins i32imm:$addr),
+                  "load[2] $dst, $addr",
+                  [(set v2i32:$dst, (load addr:$addr))]>;
+
+def LOAD4rr : Inst32MD2R<29,
+                  (outs QuadRegs:$dst), (ins GenericRegs:$addr),
+                  "load[4] $dst, $addr",
+                  [(set v4i32:$dst, (load addr:$addr))]>;
+
+def LOAD4ri : Inst32MD2I<29,
+                  (outs QuadRegs:$dst), (ins i32imm:$addr),
+                  "load[4] $dst, $addr",
+                  [(set v4i32:$dst, (load addr:$addr))]>;
 
 def LOADfrr : Inst32MD2R<29,
                   (outs GenericRegs:$dst), (ins GenericRegs:$addr),
                   "load $dst, $addr",
                   [(set f32:$dst, (load addr:$addr))]>;
 
-def LOADfri : Inst32MD2R<29,
+def LOADfri : Inst32MD2I<29,
                   (outs GenericRegs:$dst), (ins i32imm:$addr),
                   "load $dst, $addr",
                   [(set f32:$dst, (load addr:$addr))]>;
+
+def LOAD2frr : Inst32MD2R<29,
+                  (outs DoubleRegs:$dst), (ins GenericRegs:$addr),
+                  "load[2] $dst, $addr",
+                  [(set v2f32:$dst, (load addr:$addr))]>;
+
+def LOAD2fri : Inst32MD2I<29,
+                  (outs DoubleRegs:$dst), (ins i32imm:$addr),
+                  "load[2] $dst, $addr",
+                  [(set v2f32:$dst, (load addr:$addr))]>;
+
+def LOAD4frr : Inst32MD2R<29,
+                  (outs QuadRegs:$dst), (ins GenericRegs:$addr),
+                  "load[4] $dst, $addr",
+                  [(set v4f32:$dst, (load addr:$addr))]>;
+
+def LOAD4fri : Inst32MD2I<29,
+                  (outs QuadRegs:$dst), (ins i32imm:$addr),
+                  "load[4] $dst, $addr",
+                  [(set v4f32:$dst, (load addr:$addr))]>;
 
 def LOADWrr : Inst32MD2R<30,
                   (outs GenericRegs:$dst), (ins GenericRegs:$addr),
@@ -417,6 +405,10 @@ def LOADBri : Inst32MD2I<31,
                   "loadb $dst, $addr",
                   [(set i32:$dst, (zextloadi8 addr:$addr))]>;
 
+//===----------------------------------------------------------------------===//
+// Stores
+//===----------------------------------------------------------------------===//
+
 def STORErr : Inst32MD2R<32,
                   (outs), (ins GenericRegs:$src, GenericRegs:$addr),
                   "store $src, $addr",
@@ -426,6 +418,56 @@ def STOREri : Inst32MD2I<32,
                   (outs), (ins GenericRegs:$src, i32imm:$addr),
                   "store $src, $addr",
                   [(store i32:$src, addr:$addr)]>;
+
+def STORE2rr : Inst32MD2R<32,
+                  (outs), (ins DoubleRegs:$src, GenericRegs:$addr),
+                  "store[2] $src, $addr",
+                  [(store v2i32:$src, addr:$addr)]>;
+
+def STORE2ri : Inst32MD2R<32,
+                  (outs), (ins DoubleRegs:$src, i32imm:$addr),
+                  "store[2] $src, $addr",
+                  [(store v2i32:$src, addr:$addr)]>;
+
+def STORE4rr : Inst32MD2R<32,
+                  (outs), (ins QuadRegs:$src, GenericRegs:$addr),
+                  "store[4] $src, $addr",
+                  [(store v4i32:$src, addr:$addr)]>;
+
+def STORE4ri : Inst32MD2R<32,
+                   (outs), (ins QuadRegs:$src, i32imm:$addr),
+                  "store[4] $src, $addr",
+                  [(store v4i32:$src, addr:$addr)]>;
+
+def STOREfrr : Inst32MD2R<32,
+                  (outs), (ins GenericRegs:$src, GenericRegs:$addr),
+                  "store $src, $addr",
+                  [(store f32:$src, addr:$addr)]>;
+
+def STOREfri : Inst32MD2R<32,
+                  (outs), (ins GenericRegs:$src, i32imm:$addr),
+                  "store $src, $addr",
+                  [(store f32:$src, addr:$addr)]>;
+
+def STORE2frr : Inst32MD2R<32,
+                  (outs), (ins DoubleRegs:$src, GenericRegs:$addr),
+                  "store[2] $src, $addr",
+                  [(store v2f32:$src, addr:$addr)]>;
+
+def STORE2fri : Inst32MD2R<32,
+                  (outs), (ins DoubleRegs:$src, i32imm:$addr),
+                  "store[2] $src, $addr",
+                  [(store v2f32:$src, addr:$addr)]>;
+
+def STORE4frr : Inst32MD2R<32,
+                  (outs), (ins QuadRegs:$src, GenericRegs:$addr),
+                  "store[4] $src, $addr",
+                  [(store v4f32:$src, addr:$addr)]>;
+
+def STORE4fri : Inst32MD2R<32,
+                   (outs), (ins QuadRegs:$src, i32imm:$addr),
+                  "store[4] $src, $addr",
+                  [(store v4f32:$src, addr:$addr)]>;
 
 def STOREWrr : Inst32MD2R<33,
                   (outs), (ins GenericRegs:$src, GenericRegs:$addr),
@@ -520,6 +562,10 @@ def STORELBri : Inst32MD2I<34,
 
 }
 
+//===----------------------------------------------------------------------===//
+// Immediate loads and moves
+//===----------------------------------------------------------------------===//
+
 def LDIri : Inst32MD2I<41,
                   (outs GenericRegs:$dst), (ins i32imm:$src),
                   "ldi $dst, $src",
@@ -529,6 +575,106 @@ def MOVrr : Inst32MD2R<42,
                   (outs GenericRegs:$dst), (ins GenericRegs:$src),
                   "mov $dst, $src",
                   []>;
+
+def MOV2rr : Inst32MD2R<42,
+                  (outs DoubleRegs:$dst), (ins DoubleRegs:$src),
+                  "mov[2] $dst, $src",
+                  []>;
+
+def MOV4rr : Inst32MD2R<42,
+                  (outs QuadRegs:$dst), (ins QuadRegs:$src),
+                  "mov[4] $dst, $src",
+                  []>;
+
+//===----------------------------------------------------------------------===//
+// Vector operation wrappings
+//===----------------------------------------------------------------------===//
+
+def SCALAR_TO_VECTOR2i : Inst32MD2R<42,
+                  (outs DoubleRegs:$dst), (ins GenericRegs:$src),
+                  "mov $dst, $src",
+                  [(set v2i32:$dst, (scalar_to_vector i32:$src))]>;
+
+def SCALAR_TO_VECTOR4i : Inst32MD2R<42,
+                  (outs QuadRegs:$dst), (ins GenericRegs:$src),
+                  "mov $dst, $src",
+                  [(set v4i32:$dst, (scalar_to_vector i32:$src))]>;
+
+def SCALAR_TO_VECTOR2f : Inst32MD2R<42,
+                  (outs DoubleRegs:$dst), (ins GenericRegs:$src),
+                  "mov $dst, $src",
+                  [(set v2f32:$dst, (scalar_to_vector f32:$src))]>;
+
+def SCALAR_TO_VECTOR4f : Inst32MD2R<42,
+                  (outs QuadRegs:$dst), (ins GenericRegs:$src),
+                  "mov $dst, $src",
+                  [(set v4f32:$dst, (scalar_to_vector f32:$src))]>;
+/*
+class QuadRegOff<string off> : Operand<v4i32> {
+  let PrintMethod =  !strconcat("printQuadRegOff", off);
+}
+def QuadRegOff1 : QuadRegOff<"1">{}
+
+def EXTRACTi_AT_0 : Inst32MD2R<42,
+                  (outs GenericRegs:$dst), (ins QuadRegs:$src),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v4i32:$src, 0))]>;
+
+def EXTRACTi_AT_1 : Inst32MD2R<42,
+                  (outs GenericRegs:$dst), (ins QuadRegOff<"<1>">:$src),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v4i32:$src, 1))]>;
+
+def EXTRACTi_AT_2 : Inst32MD2R<42,
+                  (outs GenericRegs:$dst), (ins QuadRegOff<"<2>">:$src),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v4i32:$src, 2))]>;
+
+def EXTRACTi_AT_3 : Inst32MD2R<42,
+                  (outs GenericRegs:$dst), (ins QuadRegOff<"<3>">:$src),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v4i32:$src, 3))]>;
+*/
+
+def QuadRegOffI : Operand<v4i32> {
+  let PrintMethod =  "printRegOff";
+}
+
+def QuadRegOffF : Operand<v4f32> {
+  let PrintMethod =  "printRegOff";
+}
+
+def DoubleRegOffI : Operand<v2i32> {
+  let PrintMethod =  "printRegOff";
+}
+
+def DoubleRegOffF : Operand<v2f32> {
+  let PrintMethod =  "printRegOff";
+}
+
+def EXTRACT_VECTOR_ELT2i : Pseudo<
+                  (outs GenericRegs:$dst), (ins DoubleRegOffI:$src, i32imm:$offset),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v2i32:$src, imm:$offset))]>;
+
+def EXTRACT_VECTOR_ELT4i : Pseudo<
+                  (outs GenericRegs:$dst), (ins QuadRegOffI:$src, i32imm:$offset),
+                  "mov $dst, $src",
+                  [(set i32:$dst, (extractelt v4i32:$src, imm:$offset))]>;
+
+def EXTRACT_VECTOR_ELT2f : Pseudo<
+                  (outs GenericRegs:$dst), (ins DoubleRegOffF:$src, i32imm:$offset),
+                  "mov $dst, $src",
+                  [(set f32:$dst, (extractelt v2f32:$src, imm:$offset))]>;
+
+def EXTRACT_VECTOR_ELT4f : Pseudo<
+                  (outs GenericRegs:$dst), (ins QuadRegOffF:$src, i32imm:$offset),
+                  "mov $dst, $src",
+                  [(set f32:$dst, (extractelt v4f32:$src, imm:$offset))]>;
+
+//===----------------------------------------------------------------------===//
+// Function return and call
+//===----------------------------------------------------------------------===//
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
   def RET  : Inst32MD0<45,
@@ -566,7 +712,7 @@ def : Pat<(i32 uimm19:$val),
 
 // Huge immediates.
 def : Pat<(i32 imm:$val),
-          (ORrr (LDIri (LO19 imm:$val)), (SHLri (LDIri (HI13 imm:$val)), (i32 13)))>;
+          (ORrr (LDIri (LO19 imm:$val)), (SHLri (LDIri (HI13 imm:$val)), (i32 19)))>;
 
 // Global addresses, constant pool entries
 def : Pat<(MDhigh tglobaladdr:$in), (SHLri (LDIri tglobaladdr:$in), 16)>;

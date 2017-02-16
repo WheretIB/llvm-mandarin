@@ -56,6 +56,16 @@ namespace llvm {
                                                 const SelectionDAG &DAG,
                                                 unsigned Depth = 0) const;
 
+	/// Targets can use this to indicate that they only support *some*
+	/// VECTOR_SHUFFLE operations, those with specific masks.  By default, if a
+	/// target supports the VECTOR_SHUFFLE node, all mask values are assumed to be
+	/// legal.
+	virtual bool isShuffleMaskLegal(const SmallVectorImpl<int> &/*Mask*/,
+									EVT /*VT*/) const
+	{
+		return false;
+	}
+
     virtual MachineBasicBlock *
       EmitInstrWithCustomInserter(MachineInstr *MI,
                                   MachineBasicBlock *MBB) const;
@@ -101,6 +111,7 @@ namespace llvm {
 	SDValue LowerAddress(SDValue Op, SelectionDAG &DAG) const;
 	SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
 	SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
+	SDValue LowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const;
 
     bool ShouldShrinkFPConstant(EVT VT) const {
       // Do not shrink FP constpool if VT == MVT::f128.
