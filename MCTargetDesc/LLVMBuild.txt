@@ -1,0 +1,22 @@
+;===- ./lib/Target/Mandarin/MCTargetDesc/LLVMBuild.txt ---------------------===;
+;
+;                     Vyacheslav Egorov
+;
+; This file is distributed under the MIT License
+;
+;===------------------------------------------------------------------------===;
+;
+; This is an LLVMBuild description file for the components in this subdirectory.
+;
+; For more information on the LLVMBuild system, please see:
+;
+;   http://llvm.org/docs/LLVMBuild.html
+;
+;===------------------------------------------------------------------------===;
+
+[component_0]
+type = Library
+name = MandarinDesc
+parent = Mandarin
+required_libraries = MC MandarinInfo Support
+add_to_library_groups = Mandarin

@@ -1,0 +1,34 @@
+;===- ./lib/Target/Sparc/LLVMBuild.txt -------------------------------------===;
+;
+;                     Vyacheslav Egorov
+;
+; This file is distributed under the MIT License
+;
+;===------------------------------------------------------------------------===;
+;
+; This is an LLVMBuild description file for the components in this subdirectory.
+;
+; For more information on the LLVMBuild system, please see:
+;
+;   http://llvm.org/docs/LLVMBuild.html
+;
+;===------------------------------------------------------------------------===;
+
+
+[common]
+subdirectories = MCTargetDesc TargetInfo
+
+[component_0]
+type = TargetGroup
+name = Mandarin
+parent = Target
+has_asmprinter = 1
+has_jit = 0
+
+[component_1]
+type = Library
+name = MandarinCodeGen
+parent = Mandarin
+required_libraries = AsmPrinter CodeGen Core MC SelectionDAG MandarinDesc
+                     MandarinInfo Support Target
+add_to_library_groups = Mandarin
